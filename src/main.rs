@@ -64,9 +64,28 @@ impl Buffer {
     }
 }
 
+/// Absolute position of the virtual cursor in the buffer
+struct Cursor {
+    line: usize,
+    col: usize,
+}
+impl Cursor {
+    fn start() -> Self {
+        Self { line: 0, col: 0 }
+    }
+}
+
+struct Window {
+    buffer_id: usize,
+    cursor: Cursor,
+    /// The absolute position of the first line that is visible
+    scroll_offset: usize,
+}
+
 struct Editor {
     buffers: Vec<Buffer>,
-    current_buffer: usize,
+    current_window: Window,
+    command_buffer: String,
 }
 
 impl Editor {
@@ -74,7 +93,12 @@ impl Editor {
         let buf0 = Buffer::new_empty(0);
         Self {
             buffers: vec![buf0],
-            current_buffer: 0,
+            current_window: Window {
+                buffer_id: 0,
+                cursor: Cursor::start(),
+                scroll_offset: 0,
+            },
+            command_buffer: String::with_capacity(1024),
         }
     }
     fn max_id(&self) -> usize {
@@ -95,12 +119,34 @@ impl Editor {
 
         Ok(buf)
     }
+    fn get_current_buffer(&self) -> &Buffer {
+        // hypothetically impossible to error, but oh well
+        self.buffers.get(self.current_buffer).unwrap()
+    }
 }
 
 #[derive(Error, Debug)]
 enum EditorError {
     #[error("buffer {0} not found")]
     BufferNotFound(usize),
+}
+
+// 1. calculate // 1. render the current buffer
+fn render_frame(stdout: &mut impl Write, editor: &Editor) -> anyhow::Result<()> {
+    let (cols, rows) = terminal::size()?;
+    clear_screen(stdout)?;
+
+    for (line_number, line) in editor.get_current_buffer().text.iter().enumerate() {
+        print!("{:>3} ", line_number + 1);
+        print!("{}", line);
+    }
+
+    execute!(stdout, cursor::MoveTo(0, rows - 1))?;
+    if !editor.command_buffer.is_empty() {
+        print!(":{}", editor.command_buffer);
+        stdout.flush()?;
+    }
+    Ok(())
 }
 
 fn main() -> anyhow::Result<()> {
@@ -114,20 +160,11 @@ fn main() -> anyhow::Result<()> {
 
     let mut mode = Mode::Normal;
 
-    let mut command_buffer = String::with_capacity(1024);
-
     let mut editor = Editor::new();
 
     // main loop
     loop {
-        let (cols, rows) = terminal::size()?;
-        clear_screen(&mut stdout)?;
-
-        execute!(stdout, cursor::MoveTo(0, rows - 1))?;
-        if !command_buffer.is_empty() {
-            print!(":{}", command_buffer);
-            stdout.flush()?;
-        }
+        render_frame(&mut stdout, &editor)?;
         match event::read()? {
             Event::Key(KeyEvent {
                 code,
@@ -161,25 +198,28 @@ fn main() -> anyhow::Result<()> {
                         KeyCode::Char('q') => mode = Mode::Normal,
                         _ => {}
                     },
-                    Mode::Command => match code {
-                        KeyCode::Esc => {
-                            mode = Mode::Normal;
-                        }
-                        KeyCode::Enter => {
-                            if command_buffer == "q" {
-                                break;
+                    Mode::Command => {
+                        let command_buffer = &mut editor.command_buffer;
+                        match code {
+                            KeyCode::Esc => {
+                                mode = Mode::Normal;
                             }
-                            command_buffer.clear();
-                            mode = Mode::Normal;
+                            KeyCode::Enter => {
+                                if command_buffer == "q" {
+                                    break;
+                                }
+                                command_buffer.clear();
+                                mode = Mode::Normal;
+                            }
+                            KeyCode::Backspace => {
+                                command_buffer.pop();
+                            }
+                            KeyCode::Char(c) => {
+                                command_buffer.push(c);
+                            }
+                            _ => {}
                         }
-                        KeyCode::Backspace => {
-                            command_buffer.pop();
-                        }
-                        KeyCode::Char(c) => {
-                            command_buffer.push(c);
-                        }
-                        _ => {}
-                    },
+                    }
                 }
             }
             _ => {}
