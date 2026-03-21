@@ -5,7 +5,8 @@ use crossterm::{
     execute,
     terminal::{self, Clear, disable_raw_mode, enable_raw_mode},
 };
-use std::io::Write;
+use std::{io::Write, path::PathBuf};
+use thiserror::Error;
 
 // /// A toy text editor in Rust
 // #[derive(Parser, Debug)]
@@ -22,6 +23,86 @@ enum Mode {
     Command,
 }
 
+enum BufSource {
+    Scratch,
+    File(PathBuf),
+    // Terminal
+}
+
+struct Buffer {
+    pub id: usize,
+    pub text: Vec<String>,
+    pub source: BufSource,
+    pub dirty: bool,
+}
+
+impl Buffer {
+    fn new(id: usize, text: Vec<String>, source: BufSource) -> Self {
+        Self {
+            id,
+            text,
+            source,
+            dirty: false,
+        }
+    }
+    fn new_empty(id: usize) -> Self {
+        Self {
+            id,
+            text: Vec::new(),
+            source: BufSource::Scratch,
+            dirty: false,
+        }
+    }
+    fn new_from_file(id: usize, filepath: &PathBuf) -> anyhow::Result<Self> {
+        let text = std::fs::read_to_string(filepath)?;
+        Ok(Self {
+            id,
+            text: text.lines().map(|s| s.to_string()).collect(),
+            source: BufSource::File(filepath.clone()),
+            dirty: false,
+        })
+    }
+}
+
+struct Editor {
+    buffers: Vec<Buffer>,
+    current_buffer: usize,
+}
+
+impl Editor {
+    fn new() -> Self {
+        let buf0 = Buffer::new_empty(0);
+        Self {
+            buffers: vec![buf0],
+            current_buffer: 0,
+        }
+    }
+    fn max_id(&self) -> usize {
+        self.buffers.last().map(|b| b.id).unwrap_or(0)
+        // self.buffers.iter().map(|b| b.id).max().unwrap_or(0)
+    }
+    fn new_buffer(&mut self, text: Vec<String>, source: BufSource) -> usize {
+        let id = self.max_id() + 1;
+        self.buffers.push(Buffer::new(id, text, source));
+        id
+    }
+    fn open_buffer(&mut self, id: usize) -> Result<&mut Buffer, EditorError> {
+        let buf = self
+            .buffers
+            .iter_mut()
+            .find(|b| b.id == id)
+            .ok_or(EditorError::BufferNotFound(id))?;
+
+        Ok(buf)
+    }
+}
+
+#[derive(Error, Debug)]
+enum EditorError {
+    #[error("buffer {0} not found")]
+    BufferNotFound(usize),
+}
+
 fn main() -> anyhow::Result<()> {
     // let args = Args::parse();
 
@@ -34,6 +115,8 @@ fn main() -> anyhow::Result<()> {
     let mut mode = Mode::Normal;
 
     let mut command_buffer = String::with_capacity(1024);
+
+    let mut editor = Editor::new();
 
     // main loop
     loop {
