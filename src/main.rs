@@ -119,9 +119,14 @@ impl Editor {
 
         Ok(buf)
     }
-    fn get_current_buffer(&self) -> &Buffer {
+    fn open_file(&mut self, filepath: &PathBuf) -> anyhow::Result<usize> {
+        let id = self.max_id() + 1;
+        self.buffers.push(Buffer::new_from_file(id, filepath)?);
+        Ok(id)
+    }
+    fn get_current_window(&self) -> &Window {
         // hypothetically impossible to error, but oh well
-        self.buffers.get(self.current_buffer).unwrap()
+        &self.current_window
     }
 }
 
@@ -135,8 +140,15 @@ enum EditorError {
 fn render_frame(stdout: &mut impl Write, editor: &Editor) -> anyhow::Result<()> {
     let (cols, rows) = terminal::size()?;
     clear_screen(stdout)?;
+    execute!(stdout, cursor::MoveTo(0, 0))?;
 
-    for (line_number, line) in editor.get_current_buffer().text.iter().enumerate() {
+    let current_window = editor.get_current_window();
+
+    for (line_number, line) in editor.buffers[current_window.buffer_id]
+        .text
+        .iter()
+        .enumerate()
+    {
         print!("{:>3} ", line_number + 1);
         print!("{}", line);
     }
@@ -198,28 +210,31 @@ fn main() -> anyhow::Result<()> {
                         KeyCode::Char('q') => mode = Mode::Normal,
                         _ => {}
                     },
-                    Mode::Command => {
-                        let command_buffer = &mut editor.command_buffer;
-                        match code {
-                            KeyCode::Esc => {
-                                mode = Mode::Normal;
-                            }
-                            KeyCode::Enter => {
-                                if command_buffer == "q" {
-                                    break;
-                                }
-                                command_buffer.clear();
-                                mode = Mode::Normal;
-                            }
-                            KeyCode::Backspace => {
-                                command_buffer.pop();
-                            }
-                            KeyCode::Char(c) => {
-                                command_buffer.push(c);
-                            }
-                            _ => {}
+                    Mode::Command => match code {
+                        KeyCode::Esc => {
+                            mode = Mode::Normal;
                         }
-                    }
+                        KeyCode::Enter => {
+                            if editor.command_buffer == "q" {
+                                break;
+                            }
+                            let command = editor.command_buffer.split_once(' ').unwrap().0;
+                            if command == "e" {
+                                let file = editor.command_buffer.split_once(' ').unwrap().1;
+                                let id = editor.open_file(&PathBuf::from(file))?;
+                                editor.current_window.buffer_id = id;
+                            }
+                            editor.command_buffer.clear();
+                            mode = Mode::Normal;
+                        }
+                        KeyCode::Backspace => {
+                            editor.command_buffer.pop();
+                        }
+                        KeyCode::Char(c) => {
+                            editor.command_buffer.push(c);
+                        }
+                        _ => {}
+                    },
                 }
             }
             _ => {}
