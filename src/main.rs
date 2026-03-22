@@ -183,6 +183,7 @@ impl Editor {
         let (cols, rows) = terminal::size()?;
 
         if direction == Direction::Up && current_line - current_offset == 0 {
+            // BUG: doesn't account for overflow
             self.current_window.scroll_offset -= 1;
         } else if direction == Direction::Down
             && ((current_line - current_offset) == (rows - 1).into())
