@@ -80,13 +80,19 @@ impl Editor {
 
         let num_lines = self.buffers[self.current_window.buffer_id].text.len();
 
+        // bug: if we scroll all the content off the screen, and scroll back up
+        // the content doesn't come back
         let can_move = match direction {
             Direction::Up => {
+                // buffer cursor is at the top of the screen
+                // and we have scrolled
                 if current_line - current_offset == 0 && self.current_window.scroll_offset > 0 {
                     self.current_window.scroll_offset -= 1;
+                    // always scroll the screen cursor up if we are going to scroll the buffer cursor
+                    // trust the ScreenCursor overflow protection
                     true
                 } else {
-                    true
+                    !screen_cursor.is_top()
                 }
             }
             Direction::Down => {
