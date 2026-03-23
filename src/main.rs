@@ -1,27 +1,35 @@
-// use clap::Parser;
+use clap::Parser;
 use crossterm::{
     cursor,
     event::{self, Event, KeyCode, KeyEvent, KeyModifiers},
     execute,
     terminal::{self, Clear, disable_raw_mode, enable_raw_mode},
 };
-use std::{io::Write, path::PathBuf};
-use thiserror::Error;
+use std::{
+    io::Write,
+    path::PathBuf,
+    time::{Duration, Instant},
+};
+use tracing::{error, info, warn};
 
 mod buffer;
 mod editor;
 mod errors;
+mod screen;
 mod window;
 
-use crate::{editor::{Editor, Mode}, window::Direction};
+use crate::{
+    editor::{Editor, Mode},
+    window::Direction,
+};
 
-// /// A toy text editor in Rust
-// #[derive(Parser, Debug)]
-// #[command(version, about, long_about = None)]
-// struct Args {
-//     /// The file to edit
-//     file: Option<String>,
-// }
+/// A toy text editor in Rust
+#[derive(Parser, Debug)]
+#[command(version, about, long_about = None)]
+struct Args {
+    /// The file to edit
+    file: Option<String>,
+}
 
 // TODO: rewrite this as a state machine that understands the window
 fn render_frame(stdout: &mut impl Write, editor: &Editor) -> anyhow::Result<()> {
@@ -74,19 +82,44 @@ fn render_frame(stdout: &mut impl Write, editor: &Editor) -> anyhow::Result<()> 
 }
 
 fn main() -> anyhow::Result<()> {
-    // let args = Args::parse();
+    let file_appender = tracing_appender::rolling::never("logs", "log.txt");
+    let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
+
+    tracing_subscriber::fmt()
+        .with_writer(non_blocking)
+        .with_ansi(false) // disable color codes in file output
+        .init();
+
+    info!("Application started");
+    let args = Args::parse();
 
     let mut stdout = std::io::stdout().lock();
 
     execute!(stdout, terminal::EnterAlternateScreen)?;
 
+    std::panic::set_hook(Box::new(|info| {
+        let _ = disable_raw_mode();
+        let _ = execute!(std::io::stderr(), terminal::LeaveAlternateScreen);
+        eprintln!("{}", info);
+    }));
+
     enable_raw_mode()?;
 
     let mut editor = Editor::new();
 
+    if let Some(file) = args.file {
+        let id = editor.open_file(&PathBuf::from(file))?;
+        editor.current_window.buffer_id = id;
+    }
+
+    let mut frame_times: Vec<Duration> = vec![];
+
     // main loop
     loop {
+        let start = Instant::now();
         render_frame(&mut stdout, &editor)?;
+        let elapsed = start.elapsed();
+        frame_times.push(elapsed);
         match event::read()? {
             Event::Key(KeyEvent {
                 code,
@@ -115,9 +148,9 @@ fn main() -> anyhow::Result<()> {
                         KeyCode::Char('l') => {
                             editor.move_cursor(Direction::Right)?;
                         }
-                        // KeyCode::Char('i') => {
-                        //     mode = Mode::Insert;
-                        // }
+                        KeyCode::Char('i') => {
+                            editor.mode = Mode::Insert;
+                        }
                         KeyCode::Char(':') => {
                             editor.mode = Mode::Command;
                         }
@@ -128,8 +161,10 @@ fn main() -> anyhow::Result<()> {
                         }
                     },
                     Mode::Insert => match code {
-                        KeyCode::Char('i') => editor.mode = Mode::Insert,
-                        KeyCode::Char('q') => editor.mode = Mode::Normal,
+                        KeyCode::Char(c) => editor.insert_char(c),
+                        KeyCode::Esc => editor.mode = Mode::Normal,
+                        // KeyCode::Char('i') => editor.mode = Mode::Insert,
+                        // KeyCode::Char('q') => editor.mode = Mode::Normal,
                         _ => {}
                     },
                     Mode::Command => match code {
@@ -140,6 +175,7 @@ fn main() -> anyhow::Result<()> {
                             if editor.command_buffer == "q" {
                                 break;
                             }
+                            // TODO: there's no guarantee that this is going to be a valid command
                             let command = editor.command_buffer.split_once(' ').unwrap().0;
                             if command == "e" {
                                 let file = editor.command_buffer.split_once(' ').unwrap().1;
@@ -169,6 +205,13 @@ fn main() -> anyhow::Result<()> {
 
     disable_raw_mode()?;
     println!("Bye!");
+
+    let mut total_time = Duration::ZERO;
+    let len = frame_times.len() as u32;
+    for frame_time in frame_times {
+        total_time += frame_time;
+    }
+    info!("Average frame time: {:?}", total_time / len);
     Ok(())
 }
 

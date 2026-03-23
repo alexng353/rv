@@ -1,11 +1,13 @@
 use std::path::PathBuf;
 
+#[derive(Debug)]
 pub enum BufSource {
     Scratch,
     File(PathBuf),
     // Terminal
 }
 
+#[derive(Debug)]
 pub struct Buffer {
     pub id: usize,
     pub text: Vec<String>,

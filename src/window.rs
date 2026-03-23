@@ -13,6 +13,7 @@ impl ScreenCursor {
 }
 
 /// Absolute position of the virtual cursor in the buffer
+#[derive(Debug)]
 pub struct BufferCursor {
     pub line: usize,
     pub col: usize,
@@ -24,6 +25,9 @@ impl BufferCursor {
     }
 }
 
+pub struct WindowId(pub usize);
+
+#[derive(Debug)]
 pub struct Window {
     pub buffer_id: usize,
     pub cursor: BufferCursor,

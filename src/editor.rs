@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use crossterm::terminal;
+use tracing::{info, instrument};
 
 use crate::{
     buffer::{BufSource, Buffer},
@@ -8,13 +9,14 @@ use crate::{
     window::{BufferCursor, Direction, Window},
 };
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Debug)]
 pub enum Mode {
     Normal,
     Insert,
     Command,
 }
 
+#[derive(Debug)]
 pub struct Editor {
     pub buffers: Vec<Buffer>,
     pub current_window: Window,
@@ -63,6 +65,20 @@ impl Editor {
     pub fn get_current_window(&self) -> &Window {
         // hypothetically impossible to error, but oh well
         &self.current_window
+    }
+
+    // #[instrument]
+    pub fn insert_char(&mut self, c: char) {
+        let current_window = &self.current_window;
+        let buffer = &mut self.buffers[current_window.buffer_id];
+        buffer.dirty = true;
+        let current_line = &mut buffer.text[current_window.cursor.line];
+
+        info!(cursor_col = current_window.cursor.col);
+
+        // possible for the cursor to be outside of the bounds of the line
+        current_line.insert(current_window.cursor.col, c);
+        self.current_window.cursor.col += 1;
     }
 
     // handles cursor movement within the window, scrolling, etc.
