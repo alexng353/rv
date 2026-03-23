@@ -1,3 +1,5 @@
+use crate::buffer::BufferId;
+
 pub struct ScreenCursor {
     pub col: u16,
     pub row: u16,
@@ -25,11 +27,13 @@ impl BufferCursor {
     }
 }
 
+#[derive(Debug)]
 pub struct WindowId(pub usize);
 
 #[derive(Debug)]
 pub struct Window {
-    pub buffer_id: usize,
+    pub id: WindowId,
+    pub buffer_id: BufferId,
     pub cursor: BufferCursor,
     /// The absolute position of the first line that is visible
     pub scroll_offset: usize,

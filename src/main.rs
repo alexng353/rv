@@ -19,7 +19,8 @@ mod screen;
 mod window;
 
 use crate::{
-    editor::{Editor, Mode},
+    editor::{Editing, Editor, Mode},
+    screen::Screen,
     window::Direction,
 };
 
@@ -51,10 +52,11 @@ fn render_frame(stdout: &mut impl Write, editor: &Editor) -> anyhow::Result<()> 
     let lines = &buffer.text[start..end];
 
     let mut row = 0;
+    // because we are rendering line numbers, our cursor is bugging
     for (line_number, line) in lines.iter().enumerate() {
         execute!(stdout, cursor::MoveTo(0, row))?;
-        print!("{:>3} ", line_number + offset + 1);
-        let mut col = 4;
+        // print!("{:>3} ", line_number + offset + 1);
+        let mut col = 0;
         for ch in line.chars() {
             if col >= cols {
                 break;
@@ -112,11 +114,14 @@ fn main() -> anyhow::Result<()> {
         editor.current_window.buffer_id = id;
     }
 
+    let mut screen = Screen::new();
+
     let mut frame_times: Vec<Duration> = vec![];
 
     // main loop
     loop {
         let start = Instant::now();
+        screen.render(&mut stdout, &editor)?;
         render_frame(&mut stdout, &editor)?;
         let elapsed = start.elapsed();
         frame_times.push(elapsed);
@@ -163,6 +168,8 @@ fn main() -> anyhow::Result<()> {
                     Mode::Insert => match code {
                         KeyCode::Char(c) => editor.insert_char(c),
                         KeyCode::Esc => editor.mode = Mode::Normal,
+                        KeyCode::Backspace => editor.backspace(),
+                        KeyCode::Enter => editor.enter(),
                         // KeyCode::Char('i') => editor.mode = Mode::Insert,
                         // KeyCode::Char('q') => editor.mode = Mode::Normal,
                         _ => {}
