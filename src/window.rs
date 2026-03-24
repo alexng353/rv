@@ -27,7 +27,7 @@ impl BufferCursor {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub struct WindowId(pub usize);
 
 #[derive(Debug)]

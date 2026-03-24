@@ -34,24 +34,38 @@ impl IndexMut<BufferId> for Vec<Buffer> {
     }
 }
 
+impl Index<WindowId> for Vec<Window> {
+    type Output = Window;
+
+    fn index(&self, id: WindowId) -> &Self::Output {
+        &self[id.0]
+    }
+}
+
+impl IndexMut<WindowId> for Vec<Window> {
+    fn index_mut(&mut self, id: WindowId) -> &mut Self::Output {
+        &mut self[id.0]
+    }
+}
+
 #[derive(Debug)]
 pub struct Editor {
     pub buffers: Vec<Buffer>,
-    pub current_window: Window,
+    pub windows: Vec<Window>,
     pub command_buffer: String,
     pub mode: Mode,
 }
 
 pub trait Editing {
-    fn backspace(&mut self);
-    fn insert_char(&mut self, c: char);
-    fn paste(&mut self);
-    fn enter(&mut self);
+    fn backspace(&mut self, window_id: WindowId);
+    fn insert_char(&mut self, window_id: WindowId, c: char);
+    fn paste(&mut self, window_id: WindowId);
+    fn enter(&mut self, window_id: WindowId);
 }
 
 impl Editing for Editor {
-    fn backspace(&mut self) {
-        let current_window = &mut self.current_window;
+    fn backspace(&mut self, window_id: WindowId) {
+        let current_window = &mut self.windows[window_id];
         let buffer = &mut self.buffers[current_window.buffer_id];
         buffer.dirty = true;
 
@@ -72,8 +86,8 @@ impl Editing for Editor {
             current_window.cursor.col = next_col;
         }
     }
-    fn insert_char(&mut self, c: char) {
-        let current_window = &self.current_window;
+    fn insert_char(&mut self, window_id: WindowId, c: char) {
+        let current_window = &mut self.windows[window_id];
         let buffer = &mut self.buffers[current_window.buffer_id];
         buffer.dirty = true;
         let current_line = &mut buffer.text[current_window.cursor.line];
@@ -82,13 +96,13 @@ impl Editing for Editor {
 
         // possible for the cursor to be outside of the bounds of the line
         current_line.insert(current_window.cursor.col, c);
-        self.current_window.cursor.col += 1;
+        current_window.cursor.col += 1;
     }
-    fn paste(&mut self) {
+    fn paste(&mut self, window_id: WindowId) {
         todo!()
     }
-    fn enter(&mut self) {
-        let current_window = &mut self.current_window;
+    fn enter(&mut self, window_id: WindowId) {
+        let current_window = &mut self.windows[window_id];
         let buffer = &mut self.buffers[current_window.buffer_id];
         buffer.dirty = true;
 
@@ -108,13 +122,13 @@ impl Editor {
         let buf0 = Buffer::new_empty(0);
         Self {
             buffers: vec![buf0],
-            current_window: Window {
+            windows: vec![Window {
                 id: WindowId(0),
                 buffer_id: BufferId(0),
                 cursor: BufferCursor::start(),
                 scroll_offset: 0,
                 col_offset: 0,
-            },
+            }],
             command_buffer: String::with_capacity(1024),
             mode: Mode::Normal,
         }
@@ -142,25 +156,22 @@ impl Editor {
         self.buffers.push(Buffer::new_from_file(id, filepath)?);
         Ok(id)
     }
-    pub fn get_current_window(&self) -> &Window {
-        // hypothetically impossible to error, but oh well
-        &self.current_window
-    }
 
     // handles cursor movement within the window, scrolling, etc.
     // window movement within the actual TUI is handled by the render_frame function
-    pub fn move_cursor(&mut self, direction: Direction) -> anyhow::Result<()> {
-        let screen_cursor = self.current_window.cursor_to_screen_coords();
+    pub fn move_cursor(&mut self, window_id: WindowId, direction: Direction) -> anyhow::Result<()> {
+        let current_window = &mut self.windows[window_id];
+        let screen_cursor = current_window.cursor_to_screen_coords();
 
-        let current_offset = self.current_window.scroll_offset;
-        let current_line = self.current_window.cursor.line;
+        let current_offset = current_window.scroll_offset;
+        let current_line = current_window.cursor.line;
 
-        let current_col_offset = self.current_window.col_offset;
-        let current_col = self.current_window.cursor.col;
+        let current_col_offset = current_window.col_offset;
+        let current_col = current_window.cursor.col;
 
         let (cols, rows) = terminal::size()?;
 
-        let num_lines = self.buffers[self.current_window.buffer_id].text.len();
+        let num_lines = self.buffers[current_window.buffer_id].text.len();
 
         // bug: if we scroll all the content off the screen, and scroll back up
         // the content doesn't come back
@@ -168,8 +179,8 @@ impl Editor {
             Direction::Up => {
                 // buffer cursor is at the top of the screen
                 // and we have scrolled
-                if current_line - current_offset == 0 && self.current_window.scroll_offset > 0 {
-                    self.current_window.scroll_offset -= 1;
+                if current_line - current_offset == 0 && current_window.scroll_offset > 0 {
+                    current_window.scroll_offset -= 1;
                     // always scroll the screen cursor up if we are going to scroll the buffer cursor
                     // trust the ScreenCursor overflow protection
                     true
@@ -181,15 +192,15 @@ impl Editor {
                 // virtual cursor is at the bottom of the screen
                 if (current_line - current_offset >= (rows - 1).into())
                     // and we're not at the bottom of the buffer
-                    && self.current_window.scroll_offset < num_lines
+                    && current_window.scroll_offset < num_lines
                 {
                     // move the scroll offset down one line
-                    self.current_window.scroll_offset += 1;
+                    current_window.scroll_offset += 1;
                 }
 
                 // if we're at the bottom of the buffer, we can't move down
-                if self.current_window.scroll_offset >= num_lines
-                    && self.current_window.cursor_to_screen_coords().row >= rows - 1
+                if current_window.scroll_offset >= num_lines
+                    && current_window.cursor_to_screen_coords().row >= rows - 1
                 {
                     false
                 } else {
@@ -200,7 +211,7 @@ impl Editor {
         };
 
         if can_move {
-            self.current_window.move_cursor(direction);
+            current_window.move_cursor(direction);
         }
 
         Ok(())

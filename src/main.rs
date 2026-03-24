@@ -32,57 +32,6 @@ struct Args {
     file: Option<String>,
 }
 
-// TODO: rewrite this as a state machine that understands the window
-fn render_frame(stdout: &mut impl Write, editor: &Editor) -> anyhow::Result<()> {
-    let (cols, rows) = terminal::size()?;
-    clear_screen(stdout)?;
-    execute!(stdout, cursor::MoveTo(0, 0))?;
-
-    let current_window = editor.get_current_window();
-
-    // command buffer line in the bottom
-    let num_lines = cols - 1;
-    let offset = current_window.scroll_offset;
-    let buffer = &editor.buffers[current_window.buffer_id];
-    let buffer_num_lines = buffer.text.len();
-
-    let start = offset;
-    let end = (offset + num_lines as usize).min(buffer_num_lines);
-
-    let lines = &buffer.text[start..end];
-
-    let mut row = 0;
-    // because we are rendering line numbers, our cursor is bugging
-    for (line_number, line) in lines.iter().enumerate() {
-        execute!(stdout, cursor::MoveTo(0, row))?;
-        // print!("{:>3} ", line_number + offset + 1);
-        let mut col = 0;
-        for ch in line.chars() {
-            if col >= cols {
-                break;
-            }
-            execute!(stdout, cursor::MoveTo(col, row))?;
-            write!(stdout, "{}", ch)?;
-            col += 1;
-        }
-        row += 1;
-    }
-
-    match editor.mode {
-        Mode::Command => {
-            execute!(stdout, cursor::MoveTo(0, rows - 1))?;
-            print!(":{}", editor.command_buffer);
-            stdout.flush()?;
-        }
-        _ => {
-            let screen_cursor = current_window.cursor_to_screen_coords();
-            execute!(stdout, cursor::MoveTo(screen_cursor.col, screen_cursor.row))?;
-        }
-    }
-
-    Ok(())
-}
-
 fn main() -> anyhow::Result<()> {
     let file_appender = tracing_appender::rolling::never("logs", "log.txt");
     let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
@@ -111,7 +60,7 @@ fn main() -> anyhow::Result<()> {
 
     if let Some(file) = args.file {
         let id = editor.open_file(&PathBuf::from(file))?;
-        editor.current_window.buffer_id = id;
+        editor.windows[0].buffer_id = id;
     }
 
     let mut screen = Screen::new();
@@ -122,9 +71,9 @@ fn main() -> anyhow::Result<()> {
     loop {
         let start = Instant::now();
         screen.render(&mut stdout, &editor)?;
-        render_frame(&mut stdout, &editor)?;
         let elapsed = start.elapsed();
         frame_times.push(elapsed);
+        let current_window_id = screen.current_window_id();
         match event::read()? {
             Event::Key(KeyEvent {
                 code,
@@ -142,16 +91,16 @@ fn main() -> anyhow::Result<()> {
                             break;
                         }
                         KeyCode::Char('h') => {
-                            editor.move_cursor(Direction::Left)?;
+                            editor.move_cursor(current_window_id, Direction::Left)?;
                         }
                         KeyCode::Char('j') => {
-                            editor.move_cursor(Direction::Down)?;
+                            editor.move_cursor(current_window_id, Direction::Down)?;
                         }
                         KeyCode::Char('k') => {
-                            editor.move_cursor(Direction::Up)?;
+                            editor.move_cursor(current_window_id, Direction::Up)?;
                         }
                         KeyCode::Char('l') => {
-                            editor.move_cursor(Direction::Right)?;
+                            editor.move_cursor(current_window_id, Direction::Right)?;
                         }
                         KeyCode::Char('i') => {
                             editor.mode = Mode::Insert;
@@ -166,10 +115,10 @@ fn main() -> anyhow::Result<()> {
                         }
                     },
                     Mode::Insert => match code {
-                        KeyCode::Char(c) => editor.insert_char(c),
+                        KeyCode::Char(c) => editor.insert_char(current_window_id, c),
                         KeyCode::Esc => editor.mode = Mode::Normal,
-                        KeyCode::Backspace => editor.backspace(),
-                        KeyCode::Enter => editor.enter(),
+                        KeyCode::Backspace => editor.backspace(current_window_id),
+                        KeyCode::Enter => editor.enter(current_window_id),
                         // KeyCode::Char('i') => editor.mode = Mode::Insert,
                         // KeyCode::Char('q') => editor.mode = Mode::Normal,
                         _ => {}
@@ -187,7 +136,8 @@ fn main() -> anyhow::Result<()> {
                             if command == "e" {
                                 let file = editor.command_buffer.split_once(' ').unwrap().1;
                                 let id = editor.open_file(&PathBuf::from(file))?;
-                                editor.current_window.buffer_id = id;
+                                // TODO: this is a hack
+                                editor.windows[current_window_id].buffer_id = id;
                             }
                             editor.command_buffer.clear();
                             editor.mode = Mode::Normal;
@@ -219,10 +169,5 @@ fn main() -> anyhow::Result<()> {
         total_time += frame_time;
     }
     info!("Average frame time: {:?}", total_time / len);
-    Ok(())
-}
-
-fn clear_screen(stdout: &mut impl Write) -> std::io::Result<()> {
-    execute!(stdout, Clear(crossterm::terminal::ClearType::All))?;
     Ok(())
 }

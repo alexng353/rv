@@ -1,6 +1,14 @@
 # rv
 
-Because I'm an idiot, I think I'm going to write a text editor in Rust.
+A toy text editor written in Rust.
+
+## features:
+
+- [x] very basic vim motions (h, j, k, l)
+- [ ] advanced vim motions
+- [x] vim-style commands (:dostuff)
+- [ ] chords
+- [ ] tiling editor windows
 
 ## License
 
