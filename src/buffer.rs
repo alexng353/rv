@@ -1,5 +1,7 @@
 use std::{ops::Add, path::PathBuf};
 
+use anyhow::Result;
+
 #[derive(Debug)]
 pub enum BufSource {
     Scratch,
@@ -59,5 +61,14 @@ impl Buffer {
             source: BufSource::File(filepath.clone()),
             dirty: false,
         })
+    }
+    pub fn name(&self) -> Result<&str> {
+        match &self.source {
+            BufSource::Scratch => Ok("[No Name]"),
+            BufSource::File(path) => Ok(path.to_str().ok_or(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Invalid UTF-8 in file path",
+            ))?),
+        }
     }
 }

@@ -1,3 +1,5 @@
+use std::ops::Add;
+
 use crate::buffer::BufferId;
 
 pub struct ScreenCursor {
@@ -27,8 +29,17 @@ impl BufferCursor {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+// TODO: make this an enum with type Scratch, and
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct WindowId(pub usize);
+
+impl Add<usize> for WindowId {
+    type Output = Self;
+
+    fn add(self, rhs: usize) -> Self::Output {
+        Self(self.0 + rhs)
+    }
+}
 
 #[derive(Debug)]
 pub struct Window {
@@ -42,6 +53,15 @@ pub struct Window {
 }
 
 impl Window {
+    pub fn new(id: WindowId, buffer_id: BufferId) -> Window {
+        Window {
+            id,
+            buffer_id,
+            cursor: BufferCursor::start(),
+            scroll_offset: 0,
+            col_offset: 0,
+        }
+    }
     pub fn move_cursor(&mut self, direction: Direction) {
         match direction {
             Direction::Up => {

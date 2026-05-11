@@ -1,26 +1,26 @@
 use clap::Parser;
 use crossterm::{
-    cursor,
     event::{self, Event, KeyCode, KeyEvent, KeyModifiers},
     execute,
-    terminal::{self, Clear, ClearType, EnterAlternateScreen, disable_raw_mode, enable_raw_mode},
+    terminal::{self, disable_raw_mode, enable_raw_mode},
 };
 use std::{
-    io::Write,
     path::PathBuf,
     time::{Duration, Instant},
 };
-use tracing::{error, info, warn};
+use tracing::info;
 
 mod buffer;
 mod editor;
 mod errors;
+mod layout;
 mod screen;
+mod structs;
 mod window;
 
 use crate::{
     editor::{Editing, Editor, Mode},
-    screen::Screen,
+    screen::{Screen, SplitDirection},
     window::Direction,
 };
 
@@ -88,6 +88,9 @@ fn main() -> anyhow::Result<()> {
             let elapsed = start.elapsed();
             frame_times.push(elapsed);
             let current_window_id = screen.current_window_id();
+            // TODO: move keybinds to another file/method
+            // TODO(P2): configuration for bindings (TOML, perhaps)
+            // TODO(P99): scripting language (rts)
             match event::read()? {
                 Event::Key(KeyEvent {
                     code,
@@ -142,17 +145,36 @@ fn main() -> anyhow::Result<()> {
                                 editor.mode = Mode::Normal;
                             }
                             KeyCode::Enter => {
-                                if editor.command_buffer == "q" {
-                                    break;
+                                info!("command_buffer: {}", editor.command_buffer);
+                                match editor.command_buffer.as_str() {
+                                    "q" => {
+                                        break;
+                                    }
+                                    "split" => {
+                                        let scratch =
+                                            editor.new_buffer(vec![], buffer::BufSource::Scratch);
+                                        let window = editor.new_window(scratch);
+
+                                        screen.split(window, SplitDirection::Horizontal)?;
+                                    }
+                                    "vsplit" => {
+                                        let scratch =
+                                            editor.new_buffer(vec![], buffer::BufSource::Scratch);
+                                        let window = editor.new_window(scratch);
+
+                                        screen.split(window, SplitDirection::Vertical)?;
+                                    }
+                                    _ => {}
+                                };
+
+                                if let Some(command) = editor.command_buffer.split_once(' ') {
+                                    if command.0 == "e" {
+                                        let id = editor.open_file(&PathBuf::from(command.1))?;
+                                        // TODO: this is a hack
+                                        editor.windows[current_window_id].buffer_id = id;
+                                    }
                                 }
-                                // TODO: there's no guarantee that this is going to be a valid command
-                                let command = editor.command_buffer.split_once(' ').unwrap().0;
-                                if command == "e" {
-                                    let file = editor.command_buffer.split_once(' ').unwrap().1;
-                                    let id = editor.open_file(&PathBuf::from(file))?;
-                                    // TODO: this is a hack
-                                    editor.windows[current_window_id].buffer_id = id;
-                                }
+
                                 editor.command_buffer.clear();
                                 editor.mode = Mode::Normal;
                             }
@@ -180,5 +202,6 @@ fn main() -> anyhow::Result<()> {
     let total_time = frame_times.iter().sum::<Duration>();
 
     info!("Average frame time: {:?}", total_time / len);
+    println!("Average frame time: {:?}", total_time / len);
     Ok(())
 }

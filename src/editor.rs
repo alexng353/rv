@@ -20,6 +20,16 @@ pub enum Mode {
     Command,
 }
 
+impl std::fmt::Display for Mode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Mode::Normal => write!(f, "Normal"),
+            Mode::Insert => write!(f, "Insert"),
+            Mode::Command => write!(f, "Command"),
+        }
+    }
+}
+
 impl Index<BufferId> for Vec<Buffer> {
     type Output = Buffer;
 
@@ -48,6 +58,8 @@ impl IndexMut<WindowId> for Vec<Window> {
     }
 }
 
+// TODO: add editor.message (echo output)
+// TODO: buffers & windows should be private members
 #[derive(Debug)]
 pub struct Editor {
     pub buffers: Vec<Buffer>,
@@ -133,16 +145,27 @@ impl Editor {
             mode: Mode::Normal,
         }
     }
-    fn max_id(&self) -> BufferId {
+    fn max_buffer_id(&self) -> BufferId {
         self.buffers.last().map(|b| b.id).unwrap_or(BufferId(0))
-        // self.buffers.iter().map(|b| b.id).max().unwrap_or(0)
     }
-    fn new_buffer(&mut self, text: Vec<String>, source: BufSource) -> usize {
-        let id = self.max_id().0 + 1;
-        self.buffers.push(Buffer::new(id, text, source));
+
+    fn max_window_id(&self) -> WindowId {
+        self.windows.last().map(|w| w.id).unwrap_or(WindowId(0))
+    }
+
+    pub fn new_window(&mut self, buffer_id: BufferId) -> WindowId {
+        let id = self.max_window_id() + 1;
+        self.windows.push(Window::new(id, buffer_id));
         id
     }
-    fn open_buffer(&mut self, id: BufferId) -> Result<&mut Buffer, EditorError> {
+
+    pub fn new_buffer(&mut self, text: Vec<String>, source: BufSource) -> BufferId {
+        let id = self.max_buffer_id() + 1;
+        self.buffers.push(Buffer::new(id.0, text, source));
+        id
+    }
+
+    fn get_buffer(&mut self, id: BufferId) -> Result<&mut Buffer, EditorError> {
         let buf = self
             .buffers
             .iter_mut()
@@ -151,8 +174,9 @@ impl Editor {
 
         Ok(buf)
     }
+
     pub fn open_file(&mut self, filepath: &PathBuf) -> Result<BufferId, EditorError> {
-        let id = self.max_id() + 1;
+        let id = self.max_buffer_id() + 1;
         self.buffers.push(Buffer::new_from_file(id, filepath)?);
         Ok(id)
     }

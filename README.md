@@ -1,14 +1,20 @@
 # rv
 
+> In an era of AI slop, it must be rare to find human slop, no?
+
 A toy text editor written in Rust.
 
 ## features:
 
+- [x] 100% flicker-free
 - [x] very basic vim motions (h, j, k, l)
 - [ ] advanced vim motions
 - [x] vim-style commands (:dostuff)
 - [ ] chords
 - [ ] tiling editor windows
+- [ ] typed scripting language
+- [x] 100% hand written code
+- [ ] full unicode support
 
 ## License
 
