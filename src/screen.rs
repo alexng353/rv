@@ -1,13 +1,14 @@
 use std::io::Write;
 
 use crossterm::{
-    cursor, execute,
-    terminal::{self, Clear},
+    cursor, execute, queue,
+    style::Print,
+    terminal::{self, Clear, ClearType},
 };
 
 use crate::{
     editor::{Editor, Mode},
-    window::WindowId,
+    window::{ScreenCursor, WindowId},
 };
 
 #[derive(PartialEq, Debug)]
@@ -28,6 +29,8 @@ enum Layout {
 
 #[derive(Debug)]
 pub struct Screen {
+    frame: u64,
+    framebuffer: Vec<u8>,
     current_tab: usize,
     tabs: Vec<Tab>,
 }
@@ -38,14 +41,26 @@ struct Tab {
     focused_window: WindowId,
 }
 
-fn clear_screen(stdout: &mut impl Write) -> std::io::Result<()> {
-    execute!(stdout, Clear(crossterm::terminal::ClearType::All))?;
-    Ok(())
+trait TakeChars {
+    fn take_chars(&self, n: usize) -> &Self;
+}
+
+impl TakeChars for str {
+    fn take_chars(&self, n: usize) -> &Self {
+        let end = self
+            .char_indices()
+            .nth(n)
+            .map(|(i, _)| i)
+            .unwrap_or(self.len());
+        &self[0..end]
+    }
 }
 
 impl Screen {
     pub fn new() -> Self {
         Self {
+            frame: 0,
+            framebuffer: vec![0; 64 * 1024], // 64 kilobyte framebuffer
             tabs: vec![Tab {
                 layout: Layout::Leaf(WindowId(0)),
                 focused_window: WindowId(0),
@@ -56,16 +71,17 @@ impl Screen {
     pub fn current_window_id(&self) -> WindowId {
         self.tabs[self.current_tab].focused_window
     }
-    pub fn render(&self, stdout: &mut impl Write, editor: &Editor) -> anyhow::Result<()> {
-        let (cols, rows) = terminal::size()?;
-        clear_screen(stdout)?;
-        execute!(stdout, cursor::MoveTo(0, 0))?;
 
+    pub fn build_frame(
+        &mut self,
+        editor: &Editor,
+        cols: u16,
+        rows: u16,
+    ) -> anyhow::Result<ScreenCursor> {
         let current_window_id = self.current_window_id();
         let current_window = &editor.windows[current_window_id];
 
-        // command buffer line in the bottom
-        let num_lines = cols - 1;
+        let num_lines = rows;
         let offset = current_window.scroll_offset;
         let buffer = &editor.buffers[current_window.buffer_id];
         let buffer_num_lines = buffer.text.len();
@@ -75,34 +91,48 @@ impl Screen {
 
         let lines = &buffer.text[start..end];
 
-        let mut row = 0;
-        // because we are rendering line numbers, our cursor is bugging
-        for (line_number, line) in lines.iter().enumerate() {
-            execute!(stdout, cursor::MoveTo(0, row))?;
-            // print!("{:>3} ", line_number + offset + 1);
-            let mut col = 0;
-            for ch in line.chars() {
-                if col >= cols {
-                    break;
-                }
-                execute!(stdout, cursor::MoveTo(col, row))?;
-                write!(stdout, "{}", ch)?;
-                col += 1;
-            }
-            row += 1;
+        for i in 0..=rows {
+            let line = lines.get(i as usize);
+            let data = line.map(|l| l.take_chars(cols as usize)).unwrap_or("");
+            queue!(
+                self.framebuffer,
+                cursor::MoveTo(0, i),
+                Print(format!("{}", data)),
+                Clear(ClearType::UntilNewLine)
+            )?;
         }
+        Ok(current_window.cursor_to_screen_coords())
+    }
+
+    pub fn render(&mut self, stdout: &mut impl Write, editor: &Editor) -> anyhow::Result<()> {
+        let (cols, rows) = terminal::size()?;
+        self.framebuffer.clear();
+        queue!(self.framebuffer, cursor::Hide, cursor::MoveTo(0, 0))?;
+
+        let screen_cursor = self.build_frame(editor, cols, rows)?;
 
         match editor.mode {
             Mode::Command => {
-                execute!(stdout, cursor::MoveTo(0, rows - 1))?;
-                print!(":{}", editor.command_buffer);
-                stdout.flush()?;
+                let command_buffer = editor.command_buffer.take_chars(cols as usize);
+
+                queue!(
+                    self.framebuffer,
+                    cursor::MoveTo(0, rows - 1),
+                    Print(format!(":{}", command_buffer)),
+                    Clear(ClearType::UntilNewLine)
+                )?;
             }
             _ => {
-                let screen_cursor = current_window.cursor_to_screen_coords();
-                execute!(stdout, cursor::MoveTo(screen_cursor.col, screen_cursor.row))?;
+                queue!(
+                    self.framebuffer,
+                    cursor::MoveTo(screen_cursor.col, screen_cursor.row)
+                )?;
             }
         }
+        queue!(self.framebuffer, cursor::Show)?;
+
+        stdout.write_all(&self.framebuffer)?;
+        stdout.flush()?;
 
         Ok(())
     }
