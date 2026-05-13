@@ -9,7 +9,6 @@ use crossterm::{
 use crate::{
     buffer::Buffer,
     editor::{Editor, Mode},
-    layout::Layout,
     structs::Rect,
     window::{ScreenCursor, Window, WindowId},
 };
@@ -22,17 +21,11 @@ pub enum SplitDirection {
     Vertical,
 }
 
+// TODO: move tabs + current tab + layouts, etc into editor instead, alongside Windows and Buffers
+// because it makes more sense, I guess
 #[derive(Debug)]
 pub struct Screen {
     framebuffer: Vec<u8>,
-    current_tab: usize,
-    tabs: Vec<Tab>,
-}
-
-#[derive(Debug)]
-struct Tab {
-    layout: Layout,
-    focused_window: WindowId,
 }
 
 trait TakeChars {
@@ -74,7 +67,8 @@ fn render_window(
         queue!(
             framebuf,
             cursor::MoveTo(rect.x, rect.y + i),
-            Print(format!("{} {}", i, data)),
+            Print(format!("{}", data)),
+            // Print(format!("{} {}", i, data)),
             Clear(ClearType::UntilNewLine)
         )?;
     }
@@ -85,7 +79,8 @@ fn render_window(
     queue!(
         framebuf,
         cursor::MoveTo(rect.x, rect.height + rect.y - 1),
-        Print(format!("{} {}", rect.height + rect.y - 1, bufname)), // TODO: make this content a buffer, and give it an extra [ + ] if the
+        Print(format!("{}", bufname)), // TODO: make this content a buffer, and give it an extra [ + ] if the
+        // Print(format!("{} {}", rect.height + rect.y - 1, bufname)), // TODO: make this content a buffer, and give it an extra [ + ] if the
         // buffer is modified
         Clear(ClearType::UntilNewLine)
     )?;
@@ -97,37 +92,7 @@ impl Screen {
     pub fn new() -> Self {
         Self {
             framebuffer: Vec::with_capacity(64 * 1024), // 64 kilobyte framebuffer
-            tabs: vec![Tab {
-                layout: Layout::Leaf(WindowId(0)),
-                focused_window: WindowId(0),
-            }],
-            current_tab: 0,
         }
-    }
-
-    // TODO: this code is wrong, we basically need to find the Window within
-    // the current Layout then we need to split that window, which should be a Layout::Leaf
-    pub fn split(&mut self, new_window: WindowId, direction: SplitDirection) -> anyhow::Result<()> {
-        let tab = &mut self.tabs[self.current_tab];
-
-        let (cols, rows) = terminal::size()?;
-        let rect = Rect {
-            x: 0,
-            y: 0,
-            height: rows,
-            width: cols,
-        };
-
-        let current_focus = tab.focused_window;
-
-        tab.layout
-            .split_at(current_focus, new_window, direction, &rect);
-
-        Ok(())
-    }
-
-    pub fn current_window_id(&self) -> WindowId {
-        self.tabs[self.current_tab].focused_window
     }
 
     fn build_frame(
@@ -142,7 +107,7 @@ impl Screen {
             width: cols,
             height: rows - 1, // accounts for statusline
         };
-        let tree = self.tabs[self.current_tab].layout.walk(screen_rect);
+        let tree = editor.current_tab().walk(screen_rect);
         for (window_id, rect) in tree {
             let window = &editor.windows[window_id];
             render_window(
@@ -162,10 +127,7 @@ impl Screen {
             Clear(ClearType::UntilNewLine)
         )?;
 
-        let current_window_id = self.current_window_id();
-        let current_window = &editor.windows[current_window_id];
-
-        Ok(current_window.cursor_to_screen_coords())
+        Ok(editor.current_window().cursor_to_screen_coords())
     }
 
     pub fn render(&mut self, stdout: &mut impl Write, editor: &Editor) -> anyhow::Result<()> {

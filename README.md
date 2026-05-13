@@ -6,6 +6,7 @@ A toy text editor written in Rust.
 
 ## features:
 
+- [x] 100% hand written code
 - [x] 100% flicker-free
 - [x] very basic vim motions (h, j, k, l)
 - [ ] advanced vim motions
@@ -13,8 +14,8 @@ A toy text editor written in Rust.
 - [ ] chords
 - [ ] tiling editor windows
 - [ ] typed scripting language
-- [x] 100% hand written code
 - [ ] full unicode support
+- [x] fully customizable keybinds via keymap and config file
 
 ## License
 

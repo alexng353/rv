@@ -1,0 +1,1 @@
+ConfigRaw { keymaps: ConfigKeyMaps { normal: {"l": "move_cursor_down", "k": "move_cursor_up", "h": "move_cursor_right", "i": "set_mode_insert", "j": "move_cursor_left"}, insert: {":": "set_mode_command", "<Esc>": "set_mode_normal"}, command: {"<Esc>": "set_mode_normal"} } }

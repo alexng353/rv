@@ -1,6 +1,6 @@
 use std::ops::Add;
 
-use crate::buffer::BufferId;
+use crate::{buffer::BufferId, structs::Direction};
 
 pub struct ScreenCursor {
     pub col: u16,
@@ -92,12 +92,4 @@ impl Window {
             row: row as u16,
         }
     }
-}
-
-#[derive(PartialEq)]
-pub enum Direction {
-    Up,
-    Down,
-    Left,
-    Right,
 }

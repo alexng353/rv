@@ -1,5 +1,13 @@
 use crate::screen::SplitDirection;
 
+#[derive(Debug, PartialEq, Copy, Clone)]
+pub enum Direction {
+    Up,
+    Down,
+    Left,
+    Right,
+}
+
 #[derive(Debug)]
 pub struct Rect {
     pub x: u16,

@@ -1,0 +1,17 @@
+[keymaps.normal]
+i = "set_mode_insert"
+j = "move_cursor_down"
+"<C-c>" = "sigint"
+":" = "set_mode_command"
+"<C-w>l" = "focus_window_left"
+h = "move_cursor_left"
+k = "move_cursor_up"
+l = "move_cursor_right"
+
+[keymaps.insert]
+"<C-c>" = "sigint"
+"<Esc>" = "set_mode_normal"
+
+[keymaps.command]
+"<Esc>" = "set_mode_normal"
+"<C-c>" = "sigint"

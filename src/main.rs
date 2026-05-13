@@ -11,17 +11,19 @@ use std::{
 use tracing::info;
 
 mod buffer;
+mod config;
 mod editor;
 mod errors;
+mod keymap;
 mod layout;
 mod screen;
 mod structs;
 mod window;
 
 use crate::{
+    config::ConfigRaw,
     editor::{Editing, Editor, Mode},
     screen::{Screen, SplitDirection},
-    window::Direction,
 };
 
 /// A toy text editor in Rust
@@ -61,6 +63,10 @@ fn main() -> anyhow::Result<()> {
 
     let mut frame_times: Vec<Duration> = vec![];
 
+    let mut raw_config = ConfigRaw::get();
+    raw_config.set(Mode::Normal, "<C-w>l", "focus_window_left");
+    std::fs::write("config.toml", &raw_config.debug_to_string()?)?;
+
     {
         std::panic::set_hook(Box::new(|info| {
             let _ = disable_raw_mode();
@@ -72,7 +78,9 @@ fn main() -> anyhow::Result<()> {
         let _guard = TerminalGuard::new()?;
         let mut stdout = std::io::stdout().lock();
 
-        let mut editor = Editor::new();
+        let mut editor = Editor::new(&raw_config)?;
+
+        std::fs::write("keymap.txt", format!("{:?}", &editor.keymap))?;
 
         if let Some(file) = args.file {
             let id = editor.open_file(&PathBuf::from(file))?;
@@ -87,115 +95,22 @@ fn main() -> anyhow::Result<()> {
             screen.render(&mut stdout, &editor)?;
             let elapsed = start.elapsed();
             frame_times.push(elapsed);
-            let current_window_id = screen.current_window_id();
-            // TODO: move keybinds to another file/method
-            // TODO(P2): configuration for bindings (TOML, perhaps)
+
             // TODO(P99): scripting language (rts)
-            match event::read()? {
-                Event::Key(KeyEvent {
-                    code,
-                    modifiers,
-                    kind,
-                    state,
-                }) => {
-                    if code == KeyCode::Char('c') && modifiers.contains(KeyModifiers::CONTROL) {
-                        println!("Exiting... (Ctrl+C)");
-                        break;
-                    }
-                    match editor.mode {
-                        Mode::Normal => match code {
-                            KeyCode::Char('q') => {
-                                break;
-                            }
-                            KeyCode::Char('h') => {
-                                editor.move_cursor(current_window_id, Direction::Left)?;
-                            }
-                            KeyCode::Char('j') => {
-                                editor.move_cursor(current_window_id, Direction::Down)?;
-                            }
-                            KeyCode::Char('k') => {
-                                editor.move_cursor(current_window_id, Direction::Up)?;
-                            }
-                            KeyCode::Char('l') => {
-                                editor.move_cursor(current_window_id, Direction::Right)?;
-                            }
-                            KeyCode::Char('i') => {
-                                editor.mode = Mode::Insert;
-                            }
-                            KeyCode::Char(':') => {
-                                editor.mode = Mode::Command;
-                            }
-                            _ => {
-                                // // for debug
-                                // write!(stdout, "code:{} ", code)?;
-                                // stdout.flush()?;
-                            }
-                        },
-                        Mode::Insert => match code {
-                            KeyCode::Char(c) => editor.insert_char(current_window_id, c),
-                            KeyCode::Esc => editor.mode = Mode::Normal,
-                            KeyCode::Backspace => editor.backspace(current_window_id),
-                            KeyCode::Enter => editor.enter(current_window_id),
-                            // KeyCode::Char('i') => editor.mode = Mode::Insert,
-                            // KeyCode::Char('q') => editor.mode = Mode::Normal,
-                            _ => {}
-                        },
-                        Mode::Command => match code {
-                            KeyCode::Esc => {
-                                editor.mode = Mode::Normal;
-                            }
-                            KeyCode::Enter => {
-                                info!("command_buffer: {}", editor.command_buffer);
-                                match editor.command_buffer.as_str() {
-                                    "q" => {
-                                        break;
-                                    }
-                                    "split" => {
-                                        let scratch =
-                                            editor.new_buffer(vec![], buffer::BufSource::Scratch);
-                                        let window = editor.new_window(scratch);
+            let event = event::read()?;
 
-                                        screen.split(window, SplitDirection::Horizontal)?;
-                                    }
-                                    "vsplit" => {
-                                        let scratch =
-                                            editor.new_buffer(vec![], buffer::BufSource::Scratch);
-                                        let window = editor.new_window(scratch);
-
-                                        screen.split(window, SplitDirection::Vertical)?;
-                                    }
-                                    _ => {}
-                                };
-
-                                if let Some(command) = editor.command_buffer.split_once(' ') {
-                                    if command.0 == "e" {
-                                        let id = editor.open_file(&PathBuf::from(command.1))?;
-                                        // TODO: this is a hack
-                                        editor.windows[current_window_id].buffer_id = id;
-                                    }
-                                }
-
-                                editor.command_buffer.clear();
-                                editor.mode = Mode::Normal;
-                            }
-                            KeyCode::Backspace => {
-                                if editor.command_buffer.is_empty() {
-                                    editor.mode = Mode::Normal;
-                                } else {
-                                    editor.command_buffer.pop();
-                                }
-                            }
-                            KeyCode::Char(c) => {
-                                editor.command_buffer.push(c);
-                            }
-                            _ => {}
-                        },
-                    }
+            if let Event::Key(key_event) = event {
+                if let Ok(key) = key_event.try_into() {
+                    editor.handle_key(key)?;
                 }
-                _ => {}
+            }
+
+            if editor.should_quit {
+                break;
             }
         }
     }
+
     println!("Bye!");
 
     let len = frame_times.len() as u32;
