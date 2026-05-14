@@ -8,16 +8,18 @@ A toy text editor written in Rust.
 
 - [x] 100% hand written code
 - [x] 100% flicker-free
-- [x] very basic vim motions (h, j, k, l)
+- [x] basic vim motions (h, j, k, l, w, b, e, W, B, E, &, ^, 0, a, A)
 - [ ] advanced vim motions
 - [x] vim-style commands (:dostuff)
 - [ ] chords
-- [ ] tiling editor windows
+- [x] tiling editor windows
 - [ ] typed scripting language
 - [ ] full unicode support
 - [x] fully customizable keybinds via keymap and config file
 
 ## License
+
+The quick brown fox jumped over the lazy dog.
 
 rv is a text editor written in Rust.
 Copyright (C) 2026  Alexander Ng

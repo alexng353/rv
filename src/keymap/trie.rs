@@ -3,7 +3,9 @@
 
 use tracing::info;
 
-use super::{Command, Key, KeySeq};
+use crate::command::Command;
+
+use super::{Key, KeySeq};
 #[derive(Debug, Default)]
 pub struct Trie {
     pub root: Node,
@@ -83,7 +85,6 @@ impl Node {
         Self::default()
     }
 
-    // TODO: this is now definitely 100% wrong
     pub fn insert(&mut self, key: &[Key], cmd: Command) -> Result<(), InternalInsertError> {
         let child = self.get_child_mut(&key[0]);
 

@@ -1,12 +1,10 @@
-use tracing::info;
-
-use crate::{screen::SplitDirection, structs::Rect, window::WindowId};
+use crate::{command::Axis, structs::Rect, window::WindowId};
 
 #[derive(Debug, Clone)]
 pub enum Layout {
     Leaf(WindowId),
     Split {
-        direction: SplitDirection,
+        axis: Axis,
         split_at: u16,
         a: Box<Layout>,
         b: Box<Layout>,
@@ -24,12 +22,12 @@ impl Layout {
         match self {
             Layout::Leaf(window_id) => vec![(*window_id, parent)],
             Layout::Split {
-                direction,
+                axis,
                 split_at,
                 a,
                 b,
             } => {
-                let (a_rect, b_rect) = parent.split(*direction, *split_at);
+                let (a_rect, b_rect) = parent.split(*axis, *split_at);
 
                 let a = a.walk(a_rect);
                 let b = b.walk(b_rect);
@@ -41,7 +39,7 @@ impl Layout {
         match self {
             Layout::Leaf(_) => {}
             Layout::Split {
-                direction,
+                axis,
                 split_at,
                 a,
                 b,
@@ -61,7 +59,7 @@ impl Layout {
                 let a = a.balance(a_rect);
                 let b = b.balance(b_rect);
                 *self = Layout::Split {
-                    direction: *direction,
+                    axis: *axis,
                     split_at: *split_at,
                     a: Box::new(a.clone()),
                     b: Box::new(b.clone()),
@@ -78,19 +76,19 @@ impl Layout {
         &mut self,
         target: WindowId,
         new_window: WindowId,
-        direction: SplitDirection,
+        axis: Axis,
         rect: &Rect,
     ) -> bool {
         match self {
             Self::Leaf(id) => {
                 if &target == id {
-                    let split_at = match direction {
-                        SplitDirection::Vertical => rect.width / 2,
-                        SplitDirection::Horizontal => rect.height / 2,
+                    let split_at = match axis {
+                        Axis::Vertical => rect.width / 2,
+                        Axis::Horizontal => rect.height / 2,
                     };
 
                     *self = Layout::Split {
-                        direction,
+                        axis,
                         split_at,
                         a: Box::new(Layout::Leaf(*id)),
                         b: Box::new(Layout::Leaf(new_window)),
@@ -102,15 +100,15 @@ impl Layout {
                 }
             }
             Self::Split {
-                direction: dir,
+                axis: dir,
                 split_at: pos,
                 a,
                 b,
             } => {
                 let (a_rect, b_rect) = rect.split(*dir, *pos);
 
-                a.split_at(target, new_window, direction, &a_rect)
-                    || b.split_at(target, new_window, direction, &b_rect)
+                a.split_at(target, new_window, axis, &a_rect)
+                    || b.split_at(target, new_window, axis, &b_rect)
             }
         }
     }

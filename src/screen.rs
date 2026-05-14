@@ -10,16 +10,8 @@ use crate::{
     buffer::Buffer,
     editor::{Editor, Mode},
     structs::Rect,
-    window::{ScreenCursor, Window, WindowId},
+    window::{ScreenCursor, Window},
 };
-
-#[derive(PartialEq, Debug, Copy, Clone)]
-pub enum SplitDirection {
-    /// The screen split runs horizontally
-    Horizontal,
-    /// The screen split runs vertically
-    Vertical,
-}
 
 // TODO: move tabs + current tab + layouts, etc into editor instead, alongside Windows and Buffers
 // because it makes more sense, I guess
@@ -28,8 +20,13 @@ pub struct Screen {
     framebuffer: Vec<u8>,
 }
 
+#[allow(dead_code)]
 trait TakeChars {
     fn take_chars(&self, n: usize) -> &Self;
+
+    fn skip_chars(&self, n: usize) -> &Self;
+
+    fn slice_chars(&self, skip: usize, take: usize) -> &Self;
 }
 
 impl TakeChars for str {
@@ -41,8 +38,32 @@ impl TakeChars for str {
             .unwrap_or(self.len());
         &self[0..end]
     }
+
+    fn skip_chars(&self, n: usize) -> &Self {
+        let end = self
+            .char_indices()
+            .nth(n)
+            .map(|(i, _)| i)
+            .unwrap_or(self.len());
+        &self[end..]
+    }
+
+    fn slice_chars(&self, skip: usize, take: usize) -> &Self {
+        let start = self
+            .char_indices()
+            .nth(skip)
+            .map(|(i, _)| i)
+            .unwrap_or(self.len());
+        let end = self
+            .char_indices()
+            .nth(take)
+            .map(|(i, _)| i)
+            .unwrap_or(self.len());
+        &self[start..end]
+    }
 }
 
+// TODO: render horizontal scrolling (lol)
 fn render_window(
     rect: Rect,
     window: &Window,
@@ -51,18 +72,22 @@ fn render_window(
     framebuf: &mut Vec<u8>,
 ) -> anyhow::Result<()> {
     let num_lines = rect.height;
-    let offset = window.scroll_offset;
+    let offset = window.scroll.row;
     let buffer_num_lines = buffer.text.len();
 
     let start = offset;
     let end = (offset + num_lines as usize).min(buffer_num_lines);
+
+    let col_offset = window.scroll.col;
+    let col_start = col_offset;
+    let col_end = col_offset + rect.width as usize;
 
     let lines = &buffer.text[start..end];
 
     for i in 0..(rect.height - 1) {
         let line = lines.get(i as usize);
         let data = line
-            .map(|l| l.take_chars(rect.width as usize))
+            .map(|l| l.slice_chars(col_start, col_end))
             .unwrap_or("");
         queue!(
             framebuf,
@@ -127,7 +152,8 @@ impl Screen {
             Clear(ClearType::UntilNewLine)
         )?;
 
-        Ok(editor.current_window().cursor_to_screen_coords())
+        let rect = editor.current_window_rect(cols, rows);
+        Ok(editor.current_window().cursor_to_screen_coords(rect))
     }
 
     pub fn render(&mut self, stdout: &mut impl Write, editor: &Editor) -> anyhow::Result<()> {

@@ -166,14 +166,17 @@ impl TryFrom<CKeyEvent> for Key {
             CKeyCode::PageUp => KeyCode::PageUp,
             CKeyCode::PageDown => KeyCode::PageDown,
             CKeyCode::Tab => KeyCode::Tab,
-            CKeyCode::BackTab => KeyCode::BackTab,
+            CKeyCode::BackTab => {
+                // Crossterm reports BackTab as Shift+BackTab, so we just normalize it to Tab
+                KeyCode::Tab
+            }
             CKeyCode::Delete => KeyCode::Delete,
             CKeyCode::Insert => KeyCode::Insert,
             CKeyCode::F(u) => KeyCode::F(u),
             CKeyCode::Char(char) => KeyCode::Char(char),
             CKeyCode::Null => KeyCode::Null,
             CKeyCode::Esc => KeyCode::Esc,
-            _ => anyhow::bail!("Illegal"),
+            _ => anyhow::bail!("Illegal character code"),
         };
 
         let mut mods: u8 = 0;
@@ -198,6 +201,15 @@ impl TryFrom<CKeyEvent> for Key {
         }
         if value.modifiers.contains(CKeyModifiers::NONE) {
             mods |= Modifiers::NONE.bits();
+        }
+
+        if matches!(code, KeyCode::Char(_)) {
+            mods &= !Modifiers::SHIFT.bits();
+        }
+
+        // force-set shift modifier for BackTab, in case it's not set
+        if matches!(value.code, CKeyCode::BackTab) {
+            mods |= Modifiers::SHIFT.bits();
         }
 
         Ok(Key {

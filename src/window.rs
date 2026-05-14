@@ -1,6 +1,13 @@
-use std::ops::Add;
+use std::ops::{Add, Index, IndexMut};
 
-use crate::{buffer::BufferId, structs::Direction};
+use tracing::info;
+
+use crate::{
+    buffer::{Buffer, BufferId},
+    command::Direction,
+    editor::Mode,
+    structs::Rect,
+};
 
 pub struct ScreenCursor {
     pub col: u16,
@@ -14,10 +21,16 @@ impl ScreenCursor {
     pub fn is_bottom(&self, num_rows: u16, offset: u16) -> bool {
         self.row == num_rows - 1 - offset
     }
+    pub fn is_left(&self) -> bool {
+        self.col == 0
+    }
+    pub fn is_right(&self, cols: u16, offset: u16) -> bool {
+        self.col == cols - 1 - offset
+    }
 }
 
 /// Absolute position of the virtual cursor in the buffer
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub struct BufferCursor {
     pub line: usize,
     pub col: usize,
@@ -27,11 +40,40 @@ impl BufferCursor {
     pub fn start() -> Self {
         Self { line: 0, col: 0 }
     }
+
+    /// Does not clamp in-place, you must set the cursor to the clamped value
+    pub fn clamp(&self, buffer: &Buffer, mode: &Mode) -> BufferCursor {
+        if mode != &Mode::Normal {
+            return *self;
+        }
+
+        let line_length = buffer.text[self.line.min(buffer.text.len() - 1)].len();
+        let num_lines = buffer.text.len();
+
+        BufferCursor {
+            col: self.col.min(line_length.saturating_sub(1)),
+            line: self.line.min(num_lines - 1),
+        }
+    }
 }
 
 // TODO: make this an enum with type Scratch, and
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct WindowId(pub usize);
+
+impl Index<WindowId> for Vec<Window> {
+    type Output = Window;
+
+    fn index(&self, id: WindowId) -> &Self::Output {
+        &self[id.0]
+    }
+}
+
+impl IndexMut<WindowId> for Vec<Window> {
+    fn index_mut(&mut self, id: WindowId) -> &mut Self::Output {
+        &mut self[id.0]
+    }
+}
 
 impl Add<usize> for WindowId {
     type Output = Self;
@@ -41,15 +83,18 @@ impl Add<usize> for WindowId {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
+pub struct ScrollState {
+    pub row: usize,
+    pub col: usize,
+}
+
+#[derive(Debug, Copy, Clone)]
 pub struct Window {
     pub id: WindowId,
     pub buffer_id: BufferId,
     pub cursor: BufferCursor,
-    /// The absolute position of the first line that is visible
-    pub scroll_offset: usize,
-    /// Column offset
-    pub col_offset: usize,
+    pub scroll: ScrollState,
 }
 
 impl Window {
@@ -58,10 +103,10 @@ impl Window {
             id,
             buffer_id,
             cursor: BufferCursor::start(),
-            scroll_offset: 0,
-            col_offset: 0,
+            scroll: ScrollState { row: 0, col: 0 },
         }
     }
+
     pub fn move_cursor(&mut self, direction: Direction) {
         match direction {
             Direction::Up => {
@@ -79,14 +124,33 @@ impl Window {
             }
             Direction::Right => {
                 self.cursor.col += 1;
+                info!("window cursor col = {}", self.cursor.col);
             }
         }
     }
-    pub fn cursor_to_screen_coords(&self) -> ScreenCursor {
-        let row = self.cursor.line - self.scroll_offset;
-        let col = self.cursor.col;
 
-        // TODO: should be fine, we should probably panic if this is out of bounds
+    /// Unbounded positive scroll, bounded negative scrolling
+    pub fn scroll(&mut self, direction: Direction) {
+        match direction {
+            Direction::Up => {
+                if self.scroll.row > 0 {
+                    self.scroll.row -= 1
+                }
+            }
+            Direction::Down => self.scroll.row += 1,
+            Direction::Left => {
+                if self.scroll.col > 0 {
+                    self.scroll.col -= 1
+                }
+            }
+            Direction::Right => self.scroll.col += 1,
+        }
+    }
+
+    pub fn cursor_to_screen_coords(&self, rect: Rect) -> ScreenCursor {
+        let row = (rect.y as usize) + self.cursor.line - self.scroll.row;
+        let col = (rect.x as usize) + self.cursor.col - self.scroll.col;
+
         ScreenCursor {
             col: col as u16,
             row: row as u16,

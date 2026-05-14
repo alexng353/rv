@@ -1,2 +1,6 @@
 /target
 /logs
+
+config.toml
+raw_config.txt
+keymap.txt

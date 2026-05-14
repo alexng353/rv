@@ -8,9 +8,10 @@ use std::{
     path::PathBuf,
     time::{Duration, Instant},
 };
-use tracing::info;
+use tracing::{Level, info};
 
 mod buffer;
+mod command;
 mod config;
 mod editor;
 mod errors;
@@ -22,8 +23,8 @@ mod window;
 
 use crate::{
     config::ConfigRaw,
-    editor::{Editing, Editor, Mode},
-    screen::{Screen, SplitDirection},
+    editor::{Editor, Mode},
+    screen::Screen,
 };
 
 /// A toy text editor in Rust
@@ -54,6 +55,7 @@ fn main() -> anyhow::Result<()> {
     let (non_blocking, _guard) = tracing_appender::non_blocking(file_appender);
 
     tracing_subscriber::fmt()
+        .with_max_level(Level::DEBUG)
         .with_writer(non_blocking)
         .with_ansi(false) // disable color codes in file output
         .init();
@@ -63,8 +65,7 @@ fn main() -> anyhow::Result<()> {
 
     let mut frame_times: Vec<Duration> = vec![];
 
-    let mut raw_config = ConfigRaw::get();
-    raw_config.set(Mode::Normal, "<C-w>l", "focus_window_left");
+    let raw_config = ConfigRaw::get();
     std::fs::write("config.toml", &raw_config.debug_to_string()?)?;
 
     {

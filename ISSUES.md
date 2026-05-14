@@ -1,9 +1,7 @@
 todo:
-- split rendering doesn't respect cursor bounding
-- need to be able to navigate between splits
-- cursor doesn't respect buffer chin bar
-- leave an extra row at the bottom of the screen for mode indicator + command
-  buffer
+- chords
+- the rest of the currently existing commands
+
 - right side of chin bar - current position in buffer - scroll position
   indicator
 ```
@@ -18,6 +16,11 @@ The possible values:
 ```
 
 done: 
+- cursor doesn't respect buffer chin bar
+- need to be able to navigate between splits
+- leave an extra row at the bottom of the screen for mode indicator + command
+  buffer
+- split rendering doesn't respect cursor bounding
 - pressing `:` in normal mode when the last line is not empty does not wipe the
   line
 - editing the code causes flickering

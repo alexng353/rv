@@ -1,14 +1,7 @@
-use crate::screen::SplitDirection;
+use crate::command::Axis;
 
-#[derive(Debug, PartialEq, Copy, Clone)]
-pub enum Direction {
-    Up,
-    Down,
-    Left,
-    Right,
-}
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub struct Rect {
     pub x: u16,
     pub y: u16,
@@ -17,9 +10,9 @@ pub struct Rect {
 }
 
 impl Rect {
-    pub fn split(&self, direction: SplitDirection, split_at: u16) -> (Rect, Rect) {
-        match direction {
-            SplitDirection::Vertical => {
+    pub fn split(&self, axis: Axis, split_at: u16) -> (Rect, Rect) {
+        match axis {
+            Axis::Vertical => {
                 let left_width = std::cmp::min(self.width, split_at);
                 (
                     // left
@@ -41,7 +34,7 @@ impl Rect {
                     },
                 )
             }
-            SplitDirection::Horizontal => {
+            Axis::Horizontal => {
                 let top_height = std::cmp::min(self.height, split_at);
                 (
                     // top

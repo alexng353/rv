@@ -1,6 +1,5 @@
 use crate::{
-    editor::Mode,
-    keymap::{Command, Key, TrieMatch, parser::parse_chords},
+    command::Command, editor::Mode, keymap::{Key, TrieMatch, parser::parse_chords}
 };
 use anyhow::Result;
 use tracing::info;
