@@ -1,8 +1,6 @@
 //
 // TODO: refactor to Trie instead of Node everywhere
 
-use tracing::info;
-
 use crate::command::Command;
 
 use super::{Key, KeySeq};

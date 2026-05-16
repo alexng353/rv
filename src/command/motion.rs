@@ -1,6 +1,6 @@
 use crate::{
     buffer::Buffer,
-    command::motions::{word_backwards, word_forwards},
+    command::motions::{word_backwards, word_backwards_end, word_forwards, word_forwards_end},
     editor::Mode,
     window::BufferCursor,
 };
@@ -51,10 +51,11 @@ impl Motion {
                 BufferCursor { col, line }
             }
             Motion::Word { forward, big, end } => {
-                if *forward {
-                    word_forwards(&cursor, buffer, *big)
-                } else {
-                    word_backwards(&cursor, buffer, *big)
+                match (forward, end) {
+                    (true, false) => word_forwards(&cursor, buffer, *big),
+                    (false, false) => word_backwards(&cursor, buffer, *big),
+                    (true, true) => word_forwards_end(&cursor, buffer, *big),
+                    (false, true) => word_backwards_end(&cursor, buffer, *big),
                 }
             }
             Motion::LineZero => BufferCursor {

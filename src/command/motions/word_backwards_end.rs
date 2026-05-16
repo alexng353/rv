@@ -8,9 +8,10 @@ use crate::{
 enum Phase {
     NoCategory,
     Start(Category),
+    InWhitespace,
 }
 
-pub fn word_backwards(cursor: &BufferCursor, buffer: &Buffer, big: bool) -> BufferCursor {
+pub fn word_backwards_end(cursor: &BufferCursor, buffer: &Buffer, big: bool) -> BufferCursor {
     let mut phase = Phase::NoCategory;
 
     let line_idx = cursor.line;
@@ -29,24 +30,28 @@ pub fn word_backwards(cursor: &BufferCursor, buffer: &Buffer, big: bool) -> Buff
 
     let line = &buffer.text[line_idx];
     let count = line.chars().count();
-    let mut chars = line.chars().rev().skip(count - col_idx);
+    let mut chars = line
+        .chars()
+        .rev()
+        .skip(count.saturating_sub(1).saturating_sub(col_idx));
 
     while let Some(c) = chars.next() {
+        dbg!(&col_idx, &c, &phase);
         let new = categorize(c, big);
         match phase {
             Phase::NoCategory => phase = Phase::Start(new),
             Phase::Start(category) => {
-                // detect transition
                 if new != category {
-                    // we started with whitespace, we've now found a non-whitespace character
-                    if category == Category::Whitespace {
-                        phase = Phase::Start(categorize(c, big));
+                    if new == Category::Whitespace {
+                        phase = Phase::InWhitespace;
                     } else {
-                        return BufferCursor {
-                            col: col_idx,
-                            line: line_idx,
-                        };
+                        break;
                     }
+                }
+            }
+            Phase::InWhitespace => {
+                if new != Category::Whitespace {
+                    break;
                 }
             }
         }
@@ -60,7 +65,7 @@ pub fn word_backwards(cursor: &BufferCursor, buffer: &Buffer, big: bool) -> Buff
 }
 
 #[cfg(test)]
-mod word_backward_tests {
+mod word_backward_end_tests {
     use super::*;
     use crate::buffer::Buffer;
 
@@ -71,9 +76,9 @@ mod word_backward_tests {
         let buffer = Buffer::new_from_str(0, FILE);
         let mut cursor = BufferCursor { line: 4, col: 4 };
 
-        cursor = word_backwards(&cursor, &buffer, false);
+        cursor = word_backwards_end(&cursor, &buffer, false);
         assert_eq!(cursor.line, 4);
-        assert_eq!(cursor.col, 0);
+        assert_eq!(cursor.col, 2);
     }
 
     #[test]
@@ -81,7 +86,7 @@ mod word_backward_tests {
         let buffer = Buffer::new_from_str(0, FILE);
         let mut cursor = BufferCursor { line: 4, col: 0 };
 
-        cursor = word_backwards(&cursor, &buffer, false);
+        cursor = word_backwards_end(&cursor, &buffer, false);
         assert_eq!(cursor.line, 3);
         assert_eq!(cursor.col, 10);
     }
@@ -91,8 +96,18 @@ mod word_backward_tests {
         let buffer = Buffer::new_from_str(0, FILE);
         let mut cursor = BufferCursor { line: 3, col: 10 };
 
-        cursor = word_backwards(&cursor, &buffer, false);
+        cursor = word_backwards_end(&cursor, &buffer, false);
         assert_eq!(cursor.line, 3);
-        assert_eq!(cursor.col, 6);
+        assert_eq!(cursor.col, 9);
+    }
+
+    #[test]
+    fn end_of_line_big() {
+        let buffer = Buffer::new_from_str(0, FILE);
+        let mut cursor = BufferCursor { line: 3, col: 10 };
+
+        cursor = word_backwards_end(&cursor, &buffer, true);
+        assert_eq!(cursor.line, 3);
+        assert_eq!(cursor.col, 4);
     }
 }

@@ -51,7 +51,7 @@ pub fn word_forwards(cursor: &BufferCursor, buffer: &Buffer, big: bool) -> Buffe
         let count = line.chars().count();
 
         if col_idx + 1 > count {
-            col_idx = (col_idx - count).saturating_sub(1);
+            col_idx = 0;
             line_idx += 1;
             phase = ForwardPhase::InWhitespace;
         } else {

@@ -27,7 +27,7 @@ pub struct Editor {
     pub tabs: Vec<Tab>,
     pub current_tab: usize,
     pending_keys: Vec<Key>,
-    pub keymap: KeyMap,
+    keymap: KeyMap,
     pub should_quit: bool,
 }
 
@@ -59,6 +59,17 @@ impl Editor {
         })
     }
 
+    fn clamp_cursor(&mut self) {
+        let window = &mut self.windows[self.tabs[self.current_tab].focused_window];
+        let buffer = &self.buffers[window.buffer_id];
+        window.cursor = window.cursor.clamp(buffer, &self.mode);
+    }
+
+    fn set_mode(&mut self, mode: Mode) {
+        self.mode = mode;
+        self.clamp_cursor();
+    }
+
     fn dispatch(&mut self, command: Command) -> Result<()> {
         let window_id = self.current_window().id;
         match command {
@@ -74,12 +85,12 @@ impl Editor {
             Command::CycleBuffer(cycle) => {}
             Command::SetMode(mode) => {
                 info!("Set mode to {}", mode);
-                self.mode = mode
+                self.set_mode(mode);
             }
             Command::Exit(_) => self.should_quit = true,
             Command::Append => {
                 self.mode = Mode::Insert;
-                self.move_cursor(window_id, Direction::Right)?;
+                self.motion(Motion::Cursor(Direction::Right))?;
             }
             Command::AppendEol => {
                 self.mode = Mode::Insert;
@@ -88,7 +99,7 @@ impl Editor {
             Command::InsertLineStart => {
                 self.mode = Mode::Insert;
                 self.motion(Motion::LineStart)?;
-            },
+            }
             Command::InsertZero => {
                 self.mode = Mode::Insert;
                 self.motion(Motion::LineZero)?;
@@ -230,8 +241,9 @@ impl Editor {
                     Mode::Insert => match key.code {
                         KeyCode::Char(c) => self.insert_char(window.id, c),
                         KeyCode::Esc => self.mode = Mode::Normal,
-                        KeyCode::Backspace => self.backspace(window.id),
-                        KeyCode::Enter => self.enter(window.id),
+                        KeyCode::Backspace => self.backspace(),
+                        KeyCode::Enter => self.enter(),
+                        KeyCode::Delete => self.delete(),
                         _ => {}
                     },
                     Mode::Normal => {
@@ -249,11 +261,13 @@ impl Editor {
                             }
                         }
                         KeyCode::Enter => self.execute_command()?,
+
                         // TODO: move cursor within command buffer
                         KeyCode::Left => {}
                         KeyCode::Right => {}
                         KeyCode::Up => {}
                         KeyCode::Down => {}
+
                         KeyCode::Home => {}
                         KeyCode::End => {}
 
@@ -288,7 +302,7 @@ impl Editor {
             width: cols,
         };
 
-        let scratch = self.new_buffer(vec![], BufSource::Scratch);
+        let scratch = self.new_buffer(vec!["".to_string()], BufSource::Scratch);
         let new_window = self.new_window(scratch);
 
         let tab = &mut self.tabs[self.current_tab];
@@ -315,7 +329,7 @@ impl Editor {
         &self.windows[self.current_tab().focused_window]
     }
 
-    fn current_window_mut(&mut self) -> &mut Window {
+    pub fn current_window_mut(&mut self) -> &mut Window {
         let focus = self.current_tab().focused_window;
         &mut self.windows[focus]
     }
@@ -390,76 +404,7 @@ impl Editor {
         window.cursor = motion.target(&window.cursor, &buffer, &self.mode);
         window.scroll = adjust_scroll(&rect, &window.cursor, window.scroll, &buffer);
 
-        Ok(())
-    }
-
-    // handles cursor movement within the window, scrolling, etc.
-    // window movement within the actual TUI is handled by the render_frame function
-    pub fn move_cursor(&mut self, window_id: WindowId, direction: Direction) -> anyhow::Result<()> {
-        let rect = {
-            let (cols, rows) = terminal::size()?;
-            self.current_window_rect(cols, rows)
-        };
-
-        let current_window = &mut self.windows[window_id];
-        let screen_cursor = current_window.cursor_to_screen_coords(rect);
-
-        let row_offset = current_window.scroll.row;
-        let current_buffer_line = current_window.cursor.line;
-
-        let col_offset = current_window.scroll.col;
-
-        // Current absolute column within buffer
-        let current_buffer_col = current_window.cursor.col;
-
-        let text = &self.buffers[current_window.buffer_id].text;
-        let num_lines = text.len();
-        let current_line_length =
-            text[(row_offset + (screen_cursor.row as usize)).min(num_lines - 1)].len();
-
-        let (can_move, should_scroll) = match direction {
-            Direction::Up => {
-                let should_scroll_up = current_buffer_line - row_offset == 0 && row_offset > 0;
-                (!screen_cursor.is_top(), should_scroll_up)
-            }
-            Direction::Down => {
-                // Virtual Cursor is at the bottom of the screen
-                let is_bottom = screen_cursor.is_bottom(rect.height, 1);
-                // We are not at the bottom of the buffer
-                let has_more_lines = current_buffer_line + 1 < num_lines;
-                info!(
-                    "has_more_lines = {}, current_window.row_offset = {}, num_lines = {}",
-                    has_more_lines, row_offset, num_lines
-                );
-                let should_scroll_down = is_bottom && has_more_lines;
-
-                // -1 for zero indexing
-                let is_bottom_of_buffer = (current_buffer_line + 1) >= num_lines;
-
-                (!is_bottom_of_buffer, should_scroll_down)
-            }
-            Direction::Left => {
-                let is_left = current_buffer_col - col_offset == 0;
-                let can_scroll_left = col_offset > 0;
-                let should_scroll_left = is_left && can_scroll_left;
-
-                (!screen_cursor.is_left(), should_scroll_left)
-            }
-            Direction::Right => {
-                let clamp = if self.mode == Mode::Normal { 1 } else { 0 };
-
-                let is_right = screen_cursor.is_right(rect.width, 0);
-                let has_more_cols = (current_line_length - clamp) - current_buffer_col > 0;
-                (has_more_cols, has_more_cols && is_right)
-            }
-        };
-
-        if can_move {
-            current_window.move_cursor(direction);
-        }
-        if should_scroll {
-            current_window.scroll(direction);
-        }
+        info!("Cursor: {:?}, Scroll: {:?}", window.cursor, window.scroll);
 
         Ok(())
     }
@@ -496,7 +441,7 @@ fn adjust_scroll(
 }
 
 #[cfg(test)]
-mod tests {
+mod adjust_scroll_tests {
     use super::*;
     const FILE: &str = include_str!("../../fixtures/lipsum.txt");
 

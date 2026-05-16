@@ -81,8 +81,6 @@ fn main() -> anyhow::Result<()> {
 
         let mut editor = Editor::new(&raw_config)?;
 
-        std::fs::write("keymap.txt", format!("{:?}", &editor.keymap))?;
-
         if let Some(file) = args.file {
             let id = editor.open_file(&PathBuf::from(file))?;
             editor.windows[0].buffer_id = id;
