@@ -63,7 +63,7 @@ pub fn apply_operator(
     range: Range,
     buffer: &mut Buffer,
     register: &mut Register,
-) -> Result<OperatorOutcome> {
+) -> OperatorOutcome {
     let mut enter_insert = false;
 
     match op {
@@ -82,7 +82,7 @@ pub fn apply_operator(
             }
         }
         Operator::Change => {
-            apply_operator(Operator::Delete, range, buffer, register)?;
+            apply_operator(Operator::Delete, range, buffer, register);
             enter_insert = true;
         }
         Operator::Yank => {
@@ -90,5 +90,5 @@ pub fn apply_operator(
         }
     }
 
-    Ok(OperatorOutcome { enter_insert })
+    OperatorOutcome { enter_insert }
 }

@@ -6,8 +6,7 @@ use tracing::info;
 use crate::{
     buffer::{BufSource, Buffer, BufferId},
     command::{
-        Axis, Command, Direction, Motion, Operator, apply_operator,
-        range::{Range, RangeKind},
+        Axis, Command, Direction, Motion, Operator, TextObjectScope, apply_operator, range::{Range, RangeKind, normalize}
     },
     config::ConfigRaw,
     editor::{Editing, Mode, tab::Tab},
@@ -36,6 +35,13 @@ pub struct Editor {
     pending_operator: Option<Operator>,
     /// unnamed register
     register: Register,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PendingState {
+    Idle,
+    OperatorPending { op: Operator },
+    TextObjectPending { op: Operator, scope: TextObjectScope },
 }
 
 impl Editor {
@@ -83,31 +89,32 @@ impl Editor {
         let window_id = self.current_window_id();
 
         if let Some(op) = self.pending_operator.take() {
-            match command {
-                Command::Move(motion) => todo!(),
-                Command::TextObject(obj) => todo!(),
-                Command::Op(op2) if op2 == op => {
-                    info!("Operator doubling: {:?}", op);
-                    let window = &mut self.windows[window_id];
-                    let buffer = &mut self.buffers[window.buffer_id];
-                    let register = &mut self.register;
-                    let range = Range {
-                        from: window.cursor,
-                        to: window.cursor,
-                        kind: RangeKind::Linewise,
-                        inclusive: false,
-                    };
-                    let outcome = apply_operator(op, range, buffer, register);
+            let window = &mut self.windows[window_id];
+            let buffer = &mut self.buffers[window.buffer_id];
+            let register = &mut self.register;
 
-                    if let Ok(outcome) = outcome {
-                        if outcome.enter_insert {
-                            self.mode = Mode::Insert;
-                        }
-                        self.clamp_cursor();
-                    };
-                },
-                _ => self.pending_operator = None,
+            let target = match command {
+                Command::Move(motion) => Some(motion.target(&window.cursor, &buffer, &self.mode)),
+                Command::TextObject(_) => todo!(),
+                Command::Op(op2) if op2 == op => Some(window.cursor),
+                _ => None,
             };
+
+            if let Some(target) = target {
+                let range = Range {
+                    from: window.cursor,
+                    to: target,
+                    kind: RangeKind::Linewise,
+                    inclusive: false,
+                };
+
+                let outcome = apply_operator(op, range, buffer, register);
+
+                if outcome.enter_insert {
+                    self.mode = Mode::Insert;
+                }
+                self.clamp_cursor();
+            }
 
             return Ok(());
         }
