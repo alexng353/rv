@@ -4,8 +4,7 @@ use anyhow::bail;
 
 use crate::{
     command::{
-        Motion,
-        motion::{Direction, Placement},
+        Motion, Operator, motion::{Direction, Placement}
     },
     editor::Mode,
 };
@@ -29,6 +28,14 @@ pub enum Axis {
     Vertical,
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum TextObjectSpecifier {
+    InnerWord,
+    InnerQuote,
+    InnerBracket,
+    InnerTag,
+}
+
 #[derive(Debug, Clone)]
 pub enum Command {
     InsertChar(char),
@@ -45,6 +52,8 @@ pub enum Command {
     InsertLineStart,
     InsertZero,
     Split(Axis),
+    Op(Operator),
+    TextObject(TextObjectSpecifier),
 }
 
 impl FromStr for Command {
@@ -52,6 +61,10 @@ impl FromStr for Command {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let parsed = match s {
+            "op_delete" => Self::Op(Operator::Delete),
+            "op_change" => Self::Op(Operator::Change),
+            "op_yank" => Self::Op(Operator::Yank),
+
             "move_cursor_right" => Self::Move(Motion::Cursor(Direction::Right)),
             "move_cursor_left" => Self::Move(Motion::Cursor(Direction::Left)),
             "move_cursor_up" => Self::Move(Motion::Cursor(Direction::Up)),

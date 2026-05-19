@@ -5,12 +5,16 @@ use tracing::info;
 
 use crate::{
     buffer::{BufSource, Buffer, BufferId},
-    command::{Axis, Command, Direction, Motion},
+    command::{
+        Axis, Command, Direction, Motion, Operator, apply_operator,
+        range::{Range, RangeKind},
+    },
     config::ConfigRaw,
     editor::{Editing, Mode, tab::Tab},
     errors::EditorError,
     keymap::{Key, KeyCode, KeyMap, Modifiers, TrieMatch},
     layout::Layout,
+    register::Register,
     structs::Rect,
     window::{BufferCursor, ScrollState, Window, WindowId},
 };
@@ -29,6 +33,9 @@ pub struct Editor {
     pending_keys: Vec<Key>,
     keymap: KeyMap,
     pub should_quit: bool,
+    pending_operator: Option<Operator>,
+    /// unnamed register
+    register: Register,
 }
 
 impl Editor {
@@ -56,13 +63,15 @@ impl Editor {
                 &raw_config.keymaps.command,
             )?,
             should_quit: false,
+            pending_operator: None,
+            register: Register::new(),
         })
     }
 
     fn clamp_cursor(&mut self) {
         let window = &mut self.windows[self.tabs[self.current_tab].focused_window];
         let buffer = &self.buffers[window.buffer_id];
-        window.cursor = window.cursor.clamp(buffer, &self.mode);
+        window.cursor = window.cursor.cursor_clamp(buffer, &self.mode);
     }
 
     fn set_mode(&mut self, mode: Mode) {
@@ -71,7 +80,38 @@ impl Editor {
     }
 
     fn dispatch(&mut self, command: Command) -> Result<()> {
-        let window_id = self.current_window().id;
+        let window_id = self.current_window_id();
+
+        if let Some(op) = self.pending_operator.take() {
+            match command {
+                Command::Move(motion) => todo!(),
+                Command::TextObject(obj) => todo!(),
+                Command::Op(op2) if op2 == op => {
+                    info!("Operator doubling: {:?}", op);
+                    let window = &mut self.windows[window_id];
+                    let buffer = &mut self.buffers[window.buffer_id];
+                    let register = &mut self.register;
+                    let range = Range {
+                        from: window.cursor,
+                        to: window.cursor,
+                        kind: RangeKind::Linewise,
+                        inclusive: false,
+                    };
+                    let outcome = apply_operator(op, range, buffer, register);
+
+                    if let Ok(outcome) = outcome {
+                        if outcome.enter_insert {
+                            self.mode = Mode::Insert;
+                        }
+                        self.clamp_cursor();
+                    };
+                },
+                _ => self.pending_operator = None,
+            };
+
+            return Ok(());
+        }
+
         match command {
             Command::InsertChar(c) => {
                 self.insert_char(window_id, c);
@@ -106,6 +146,8 @@ impl Editor {
             }
             Command::Scroll(scroll) => todo!(),
             Command::Split(axis) => self.split(axis)?,
+            Command::Op(operator) => self.pending_operator = Some(operator),
+            Command::TextObject(text_object_specifier) => todo!(),
         }
         Ok(())
     }

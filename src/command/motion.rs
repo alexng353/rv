@@ -88,7 +88,7 @@ impl Motion {
             },
         };
 
-        out = out.clamp(buffer, mode);
+        out = out.cursor_clamp(buffer, mode);
 
         out
     }
@@ -172,7 +172,7 @@ mod tests {
         assert_eq!(cursor.col, 11);
 
         mode = Mode::Normal;
-        cursor = cursor.clamp(&buffer, &mode);
+        cursor = cursor.cursor_clamp(&buffer, &mode);
         assert_eq!(cursor.col, 10);
     }
 

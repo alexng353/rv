@@ -30,7 +30,7 @@ impl ScreenCursor {
 }
 
 /// Absolute position of the virtual cursor in the buffer
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Ord, PartialOrd)]
 pub struct BufferCursor {
     pub line: usize,
     pub col: usize,
@@ -42,7 +42,7 @@ impl BufferCursor {
     }
 
     /// Does not clamp in-place, you must set the cursor to the clamped value
-    pub fn clamp(&self, buffer: &Buffer, mode: &Mode) -> BufferCursor {
+    pub fn cursor_clamp(&self, buffer: &Buffer, mode: &Mode) -> BufferCursor {
         if mode != &Mode::Normal {
             return *self;
         }

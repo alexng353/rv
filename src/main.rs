@@ -20,6 +20,7 @@ mod layout;
 mod screen;
 mod structs;
 mod window;
+mod register;
 
 use crate::{
     config::ConfigRaw,

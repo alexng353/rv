@@ -5,6 +5,8 @@ use std::{
 
 use anyhow::Result;
 
+use crate::window::BufferCursor;
+
 #[derive(Debug)]
 pub enum BufSource {
     Scratch,
@@ -119,5 +121,36 @@ impl Buffer {
         self.dirty = false;
 
         Ok(())
+    }
+
+    pub fn delete_lines(&mut self, from: usize, to: usize) {
+        self.dirty = true;
+        self.text.drain(from..=to);
+    }
+
+    pub fn delete_range(&mut self, from: BufferCursor, to: BufferCursor, inclusive: bool) {
+        self.dirty = true;
+
+        if from.line == to.line {
+            let line = &mut self.text[from.line];
+            if inclusive {
+                line.drain(from.col..=to.col);
+            } else {
+                line.drain(from.col..to.col);
+            }
+        } else {
+            let line = &mut self.text[from.line];
+            line.drain(from.col..);
+
+            self.text.drain(from.line + 1..to.line.saturating_sub(1));
+
+            let last = &mut self.text[to.line];
+
+            if inclusive {
+                last.drain(..=to.col);
+            } else {
+                last.drain(..to.col);
+            }
+        }
     }
 }
