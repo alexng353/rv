@@ -1,0 +1,11 @@
+[package]
+name = "rv-rope"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+categories.workspace = true
+repository.workspace = true
+license.workspace = true
+
+[dependencies]
+str_indices = "0.4.4"
